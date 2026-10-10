@@ -1,0 +1,1160 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gestión de Patrones — Metrología</title>
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<script src="vendor/jspdf.umd.min.js"></script>
+<div class="container">
+  <h1>Gestión de Patrones — Metrología</h1>
+
+  <div id="tabs">
+    <button id="tab-inicio" class="active">Inicio</button>
+    <button id="tab-indicadores">Indicadores</button>
+    <button id="tab-salida">Registrar salida</button>
+    <button id="tab-historial">Historial (<span id="hist-count">0</span>)</button>
+    <button id="tab-programa">Programa anual</button>
+    <button id="tab-patrones">Patrones</button>
+    <button id="tab-tecnicos">Personal</button>
+    <button id="tab-clientes">Clientes</button>
+    <button id="tab-inventario">Inventario</button>
+    <button id="tab-configuracion">Configuración</button>
+  </div>
+
+  <!-- PANEL: PROGRAMA ANUAL (CALENDARIO) -->
+  <div id="panel-programa" style="display:none;">
+    <div class="row-header">
+      <p>Programa de calibración, comprobación intermedia y mantenimiento</p>
+      <button id="btn-programa-pdf" class="btn-mini btn-primario">Descargar programa (PDF)</button>
+    </div>
+    <div class="filters">
+      <select id="prog-anio"></select>
+      <select id="prog-area"></select>
+      <select id="prog-actividad">
+        <option value="Todas">Las 3 actividades</option>
+        <option value="CAL">Solo Calibración</option>
+        <option value="V">Solo Comprobación Intermedia</option>
+        <option value="M">Solo Mantenimiento</option>
+      </select>
+      <input type="text" id="prog-buscar" placeholder="Buscar código, equipos o marca...">
+    </div>
+    <div class="cal-leyenda">
+      <span><span class="cal-marca cal-realizado">CI</span> Realizado</span>
+      <span><span class="cal-marca cal-programado">CE</span> Programado</span>
+      <span><span class="cal-marca cal-porvencer">V</span> Vence este mes</span>
+      <span><span class="cal-marca cal-vencido">M</span> Vencido</span>
+      <span style="color:var(--text-secondary);">Haz clic en una celda para registrar esa actividad.</span>
+    </div>
+    <p id="prog-resumen" style="font-size:13px; color:var(--text-secondary); margin:0 0 8px;"></p>
+    <div class="cal-wrap"><table class="cal" id="tabla-programa"></table></div>
+  </div>
+
+  <!-- PANEL: INICIO (SEMAFORO) -->
+  <div id="panel-inicio">
+    <div class="stat-cards">
+      <div class="stat-card rojo" id="card-vencidos" title="Ver patrones bloqueados por actividad vencida">
+        <div class="stat-num" id="stat-vencidos">0</div>
+        <div class="stat-label">Bloqueados: actividad vencida</div>
+      </div>
+      <div class="stat-card amarillo" id="card-porvencer" title="Ver actividades que vencen este mes">
+        <div class="stat-num" id="stat-porvencer">0</div>
+        <div class="stat-label">Vencen este mes</div>
+      </div>
+      <div class="stat-card azul" id="card-enservicio" title="Ver patrones fuera del laboratorio">
+        <div class="stat-num" id="stat-enservicio">0</div>
+        <div class="stat-label">Fuera, en servicio</div>
+      </div>
+      <div class="stat-card verde" id="card-disponibles" title="Ir al catálogo de patrones">
+        <div class="stat-num" id="stat-disponibles">0</div>
+        <div class="stat-label">Disponibles y vigentes</div>
+      </div>
+    </div>
+
+    <div class="inicio-seccion" id="sec-vencidos" style="display:none;">
+      <p class="titulo"><span class="punto rojo"></span> Actividades vencidas (patrón bloqueado para salir a servicio)</p>
+      <div class="inicio-lista" id="lista-inicio-vencidos"></div>
+    </div>
+
+    <div class="inicio-seccion" id="sec-porvencer" style="display:none;">
+      <p class="titulo"><span class="punto amarillo"></span> Vencen este mes (aún pueden salir a servicio)</p>
+      <div class="inicio-lista" id="lista-inicio-porvencer"></div>
+    </div>
+
+    <div class="inicio-seccion" id="sec-enservicio" style="display:none;">
+      <p class="titulo"><span class="punto azul"></span> Patrones fuera del laboratorio</p>
+      <div class="inicio-lista" id="lista-inicio-enservicio"></div>
+    </div>
+
+    <p class="empty-msg" id="inicio-todo-ok" style="display:none;">
+      Todo en orden: no hay actividades vencidas ni por vencer este mes, y ningún patrón está fuera del laboratorio.
+    </p>
+  </div>
+
+  <!-- PANEL: REGISTRAR SALIDA -->
+  <!-- PANEL: INDICADORES (fase 1: filtros y estructura) -->
+  <div id="panel-indicadores" style="display:none;">
+    <div class="section-toolbar" style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:14px;">
+      <div>
+        <p class="title" style="margin:0;">Indicadores de servicios</p>
+        <p style="margin:4px 0 0; color:var(--text-secondary);">Consulta servicios por periodo, técnico, magnitud y estado.</p>
+      </div>
+    </div>
+    <div class="card">
+      <div class="grid2" id="indicadores-filtros">
+        <div><label class="field-label">Periodo</label><select id="indicadores-periodo"><option value="mes">Mes actual</option><option value="anio">Año actual</option><option value="todo" selected>Todo el historial</option></select></div>
+        <div><label class="field-label">Técnico</label><select id="indicadores-tecnico"></select></div>
+        <div><label class="field-label">Magnitud / laboratorio</label><select id="indicadores-magnitud"></select></div>
+        <div><label class="field-label">Estado del servicio</label><select id="indicadores-estado"><option value="todos">Todos los estados</option><option value="activo">En servicio</option><option value="devuelto">Devuelto</option></select></div>
+      </div>
+      <div class="stat-cards" style="margin-top:18px;">
+        <div class="stat-card azul"><div class="stat-num" id="indicadores-servicios-total">0</div><div class="stat-label" id="indicadores-servicios-detalle">servicios únicos encontrados</div></div>
+        <div class="stat-card verde"><div class="stat-num" id="indicadores-servicios-activos">0</div><div class="stat-label">Servicios en curso</div></div>
+        <div class="stat-card neutral"><div class="stat-num" id="indicadores-servicios-devueltos">0</div><div class="stat-label">Servicios devueltos</div></div>
+        <div class="stat-card amarillo"><div class="stat-num" id="indicadores-patrones-movilizados">0</div><div class="stat-label">Patrones movilizados</div></div>
+        <div class="stat-card violeta"><div class="stat-num" id="indicadores-tecnicos-participantes">0</div><div class="stat-label">Técnicos participantes</div></div>
+      </div>
+      <p id="indicadores-ayuda" style="margin:14px 0 0; color:var(--text-secondary);">Cada OT o salida cuenta una sola vez, aunque contenga varios patrones.</p>
+    </div>
+    <div class="indicadores-graficos">
+      <div class="card indicador-grafico"><h3>Servicios por técnico</h3><div id="grafico-servicios-tecnico"></div></div>
+      <div class="card indicador-grafico"><h3>Servicios por magnitud</h3><div id="grafico-servicios-magnitud"></div></div>
+      <div class="card indicador-grafico indicador-grafico-amplio"><h3>Evolución mensual de servicios</h3><div id="grafico-servicios-mes"></div></div>
+    </div>
+    <div class="card" style="margin-top:16px;">
+      <div class="section-toolbar" style="display:flex; justify-content:space-between; align-items:center; gap:12px;">
+        <h3 style="margin:0;">Detalle de servicios</h3>
+        <span id="indicadores-tabla-resumen" style="font-size:13px; color:var(--text-secondary);"></span>
+      </div>
+      <div class="indicadores-tabla-wrap"><table class="indicadores-tabla"><thead><tr><th>OT</th><th>Fecha</th><th>Técnico</th><th>Empresa</th><th>Magnitud</th><th>Patrones</th><th>Estado</th></tr></thead><tbody id="indicadores-tabla-cuerpo"></tbody></table></div>
+    </div>
+  </div>
+
+  <div id="panel-salida" style="display:none;">
+    <div class="card">
+      <p class="title">Datos de la orden de trabajo</p>
+      <div class="grid2">
+        <div>
+          <label class="field-label">Número de OT</label>
+          <input type="text" id="in-ot" placeholder="OT-2026-045">
+        </div>
+        <div>
+          <label class="field-label">Fecha y hora de salida</label>
+          <div style="display:flex; gap:6px; align-items:center;">
+            <input type="date" id="in-fecha" style="flex:1.3; min-width:0;">
+            <input type="time" id="in-hora" step="1" style="flex:1; min-width:0;">
+            <button type="button" id="btn-hora-ahora" class="btn-mini" title="Poner la hora de este momento">Ahora</button>
+          </div>
+        </div>
+        <div>
+          <label class="field-label">Empresa (cliente)</label>
+          <input type="text" id="in-cliente" list="sugerencias-clientes" autocomplete="off"
+                 placeholder="Escribe el nombre de la empresa...">
+          <datalist id="sugerencias-clientes"></datalist>
+          <div id="in-cliente-estado" style="font-size:12px;margin-top:4px;min-height:16px;"></div>
+        </div>
+        <div>
+          <label class="field-label">Sede / dirección del servicio</label>
+          <select id="in-sede" disabled>
+            <option value="">Primero elige la empresa</option>
+          </select>
+        </div>
+        <div class="full">
+          <label class="field-label">Técnico asignado</label>
+          <select id="in-tecnico">
+            <option value="">Selecciona un tecnico</option>
+          </select>
+        </div>
+      </div>
+
+      <div id="salida-direccion-box">
+        <span class="dir-label">Dirección del servicio</span>
+        <div id="salida-direccion-texto"></div>
+        <div id="salida-contacto-texto" style="color:var(--text-secondary); font-size:12px; margin-top:4px;"></div>
+      </div>
+
+      <!-- Alta rapida de empresa nueva sin salir de la pantalla de salida -->
+      <div class="bloque-inline" id="bloque-cliente-nuevo">
+        <p class="title-mini">Registrar empresa nueva</p>
+        <div class="grid2">
+          <div class="full">
+            <label class="field-label">Razón social / nombre</label>
+            <input type="text" id="nc-nombre" placeholder="Ej: Empresa Textil ABC S.A.">
+          </div>
+          <div>
+            <label class="field-label">RUC (opcional)</label>
+            <input type="text" id="nc-ruc" placeholder="Ej: 20123456789">
+          </div>
+          <div>
+            <label class="field-label">Nombre de la primera sede</label>
+            <input type="text" id="nc-sede-nombre" placeholder="Ej: Sede Central / Planta Lurín">
+          </div>
+          <div class="full">
+            <label class="field-label">Dirección de esa sede</label>
+            <input type="text" id="nc-sede-direccion" placeholder="Ej: Av. Los Frutales 220, Ate, Lima">
+          </div>
+          <div>
+            <label class="field-label">Contacto en sede (opcional)</label>
+            <input type="text" id="nc-sede-contacto" placeholder="Ej: Ing. Luz Ramírez">
+          </div>
+          <div>
+            <label class="field-label">Teléfono (opcional)</label>
+            <input type="text" id="nc-sede-telefono" placeholder="Ej: 987 654 321">
+          </div>
+        </div>
+        <p id="nc-error" class="msg-error"></p>
+        <div style="display:flex; gap:8px; margin-top:10px;">
+          <button id="btn-guardar-cliente-nuevo" class="btn-primario btn-mini">Guardar empresa</button>
+          <button id="btn-cancelar-cliente-nuevo" class="btn-mini">Cancelar</button>
+        </div>
+      </div>
+
+      <!-- Alta rapida de una sede adicional para la empresa ya elegida -->
+      <div class="bloque-inline" id="bloque-sede-nueva">
+        <p class="title-mini">Añadir otra sede a <span id="ns-empresa-nombre"></span></p>
+        <div class="grid2">
+          <div>
+            <label class="field-label">Nombre de la sede</label>
+            <input type="text" id="ns-nombre" placeholder="Ej: Planta Norte / Almacén Callao">
+          </div>
+          <div>
+            <label class="field-label">Teléfono (opcional)</label>
+            <input type="text" id="ns-telefono" placeholder="Ej: 987 654 321">
+          </div>
+          <div class="full">
+            <label class="field-label">Dirección</label>
+            <input type="text" id="ns-direccion" placeholder="Ej: Jr. Los Talleres 145, Callao">
+          </div>
+          <div class="full">
+            <label class="field-label">Contacto en sede (opcional)</label>
+            <input type="text" id="ns-contacto" placeholder="Ej: Sr. Juan Pérez">
+          </div>
+        </div>
+        <p id="ns-error" class="msg-error"></p>
+        <div style="display:flex; gap:8px; margin-top:10px;">
+          <button id="btn-guardar-sede-nueva" class="btn-primario btn-mini">Guardar sede</button>
+          <button id="btn-cancelar-sede-nueva" class="btn-mini">Cancelar</button>
+        </div>
+      </div>
+      <div id="tec-info">
+        <span>Laptop: <b id="tec-laptop"></b></span>
+        <span>Termohigrómetro: <b id="tec-termo"></b></span>
+        <span id="tec-multimetro-wrap" style="display:none;">Multímetro: <b id="tec-multimetro"></b></span>
+        <span id="tec-extra-wrap" style="display:none;">Equipos adicionales: <b id="tec-extra"></b></span>
+      </div>
+    </div>
+
+    <div class="salida-workspace">
+      <div class="salida-main">
+    <!-- Escaneo. El campo no es obligatorio: puedes escanear con el foco en
+         cualquier sitio de esta pantalla y el lector se detecta igual. -->
+    <div class="caja-escaneo">
+      <div class="escaneo-fila">
+        <div style="flex:1; min-width:200px;">
+          <label class="field-label" for="escaneo-salida">Escanear patrón con el lector</label>
+          <input type="text" id="escaneo-salida" class="campo-escaneo"
+                 placeholder="Dispara el lector, o escribe el código y pulsa Enter"
+                 autocomplete="off" spellcheck="false">
+        </div>
+        <label class="escaneo-sonido" title="Pitido agudo al añadir, grave si algo falla">
+          <input type="checkbox" id="escaneo-sonido-salida" checked> Sonido
+        </label>
+      </div>
+      <p id="escaneo-salida-eco" class="escaneo-eco" role="status" aria-live="polite" aria-atomic="true"></p>
+      <p class="escaneo-ayuda">
+        Cada lectura añade el patrón a la lista de abajo con las mismas comprobaciones que
+        marcarlo a mano: no entra si está fuera, de baja o con una actividad vencida.
+        También puedes seguir marcando las casillas manualmente.
+      </p>
+    </div>
+
+    <!-- Resumen siempre visible de lo que se lleva seleccionado. La lista de
+         patrones es larga y con scroll propio: sin esto no habia forma de
+         saber que estaba marcado sin recorrerla entera. -->
+    <div id="resumen-seleccion" class="resumen-seleccion" style="display:none;">
+      <div class="resumen-header">
+        <p class="resumen-titulo">Patrones seleccionados para esta salida (<span id="resumen-count" aria-live="polite">0</span>)</p>
+        <button id="btn-limpiar-resumen" class="btn-mini">Quitar todos</button>
+      </div>
+      <div id="resumen-chips"></div>
+    </div>
+
+    <div class="row-header">
+      <p>Selecciona los patrones que salen (<span id="sel-count">0</span>)</p>
+      <button id="btn-limpiar" style="display:none;" class="btn-mini">Limpiar selección</button>
+    </div>
+
+    <div id="area-tags-salida" style="margin-bottom:8px;"></div>
+
+    <div class="filters">
+      <select id="filtro-cat"><option value="Todas">Todos los equipos</option></select>
+      <input type="text" id="buscar" placeholder="Buscar código...">
+    </div>
+
+    <div id="lista-patrones"></div>
+
+    <p id="msg-error"></p>
+    <p id="msg-ok"></p>
+
+    <button id="btn-registrar">Registrar salida y guardar en historial</button>
+      </div>
+      <aside class="salida-sidebar" aria-label="Resumen de patrones seleccionados">
+        <div id="salida-sidebar-seleccion"></div>
+        <div id="salida-sidebar-vacio" class="salida-sidebar-vacio">
+          <strong>Patrones seleccionados</strong>
+          <span>Selecciona o escanea patrones para preparar la salida.</span>
+        </div>
+        <div id="salida-sidebar-acciones" class="salida-sidebar-acciones"></div>
+      </aside>
+    </div>
+  </div>
+
+  <!-- PANEL: HISTORIAL -->
+  <div id="panel-historial" style="display:none;">
+    <div class="row-header">
+      <p>Salidas registradas</p>
+      <button id="btn-devolucion-escaner" class="btn-primario btn-mini">Devolver patrones (escáner)</button>
+    </div>
+    <div class="filters">
+      <input type="text" id="buscar-historial" placeholder="Buscar por OT, empresa, técnico, sede o código de patrón...">
+      <select id="orden-historial" aria-label="Ordenar historial">
+        <option value="actividad_desc">Última actividad: reciente</option>
+        <option value="actividad_asc">Última actividad: antigua</option>
+        <option value="salida_desc">Fecha de salida: reciente</option>
+        <option value="salida_asc">Fecha de salida: antigua</option>
+        <option value="ot_asc">Número de OT</option>
+        <option value="tecnico_asc">Técnico</option>
+        <option value="empresa_asc">Empresa</option>
+      </select>
+    </div>
+    <div id="historial-lista"></div>
+    <p id="historial-vacio" class="empty-msg" style="display:none;">Aún no hay salidas registradas.</p>
+  </div>
+
+  <!-- PANEL: PATRONES -->
+  <div id="panel-patrones" style="display:none;">
+    <div class="card pattern-form-card" id="formulario-alta-patron">
+      <p class="title">Añadir patrón nuevo</p>
+      <div class="grid2">
+        <div>
+          <label class="field-label">Laboratorio</label>
+          <select id="np-area"></select>
+        </div>
+        <div>
+          <label class="field-label">Nuevo laboratorio (opcional)</label>
+          <input type="text" id="np-area-nueva" placeholder="Ej: Fisicoquímica">
+        </div>
+        <div class="full">
+          <label class="field-label">Equipos</label>
+          <input type="text" id="np-categoria" placeholder="Ej: Pesa Clase F1">
+        </div>
+        <div>
+          <label class="field-label">Código único</label>
+          <input type="text" id="np-codigo" placeholder="Ej: PCF-021">
+        </div>
+        <div>
+          <label class="field-label">Marca (opcional)</label>
+          <input type="text" id="np-marca" placeholder="Ej: Mettler Toledo">
+        </div>
+        <div>
+          <label class="field-label">Valor nominal (opcional)</label>
+          <input type="text" id="np-valor" placeholder="Ej: 500 g, 1 kg, 20 kg">
+        </div>
+        <div>
+          <label class="field-label">Modelo (opcional)</label>
+          <input type="text" id="np-modelo" placeholder="Ej: SH-110">
+        </div>
+        <div>
+          <label class="field-label">Serie (opcional)</label>
+          <input type="text" id="np-serie" placeholder="Ej: 16928273">
+        </div>
+        <div>
+          <label class="field-label">Lugar de uso</label>
+          <select id="np-lugar">
+            <option value="Campo">Campo</option>
+            <option value="Laboratorio">Laboratorio</option>
+          </select>
+        </div>
+        <div class="full" style="background:var(--surface-2); border:1px dashed var(--border-strong); border-radius:10px; padding:10px 12px;">
+          <label style="font-weight:600;"><input type="checkbox" id="np-es-grupo"> Es un grupo de piezas iguales</label>
+          <div style="font-size:12px; color:var(--text-secondary); margin-top:6px; line-height:1.45;">
+            Para familias con muchas piezas idénticas (por ejemplo las pesas M2 de 20 kg, de la 1 a la 200).
+            El grupo se registra como un solo patrón y en la salida se escribe a mano cuántas piezas se llevan,
+            en vez de escanearlas una por una.
+          </div>
+          <div id="np-grupo-campos" style="display:none; margin-top:10px; max-width:260px;">
+            <label class="field-label" for="np-unidades">Número de piezas del grupo</label>
+            <input type="number" id="np-unidades" value="20" min="1" max="9999" step="1">
+          </div>
+        </div>
+        <div>
+          <label class="field-label">Estado inicial</label>
+          <select id="np-estado">
+            <option value="Disponible">Disponible</option>
+            <option value="En mantenimiento">En mantenimiento</option>
+            <option value="De baja">De baja</option>
+            <option value="Extraviado">Extraviado</option>
+            <option value="No Cumple / Inoperativo">No Cumple / Inoperativo</option>
+            <option value="Eliminado">Eliminado</option>
+          </select>
+        </div>
+      </div>
+      <p style="font-weight:600; font-size:13px; margin:14px 0 4px;">
+        Actividades ISO 17025 <span style="font-weight:400; color:var(--text-secondary);">(opcional, puedes dejarlas en blanco y configurarlas después)</span>
+      </p>
+      <div class="grid2" id="np-actividades"></div>
+
+      <p id="np-error" class="msg-error"></p>
+      <p id="np-ok" class="msg-ok"></p>
+      <div style="display:flex; gap:8px; margin-top:12px; align-items:center; flex-wrap:wrap;">
+        <button id="btn-agregar-patron" class="btn-primario">Añadir patrón</button>
+        <button id="btn-limpiar-alta" class="btn-mini">Limpiar formulario</button>
+        <span id="np-modo-duplicado" style="display:none; font-size:12px; color:var(--text-secondary);"></span>
+      </div>
+    </div>
+
+    <div class="catalog-section-head">
+      <div><h2>Catálogo de patrones</h2><p>Consulta, filtra y administra los equipos registrados.</p></div>
+      <div class="catalog-section-actions">
+        <span class="catalog-section-mark">Inventario técnico</span>
+        <button id="btn-abrir-modal-alta-patron" class="btn-primario" type="button">+ Añadir patrón</button>
+      </div>
+    </div>
+    <div id="area-tags-catalogo" style="margin-bottom:8px;"></div>
+
+    <div class="filters">
+      <select id="filtro-cat2"><option value="Todas">Todos los equipos</option></select>
+      <select id="filtro-estado">
+        <option value="Todos">Todos los estados</option>
+        <option value="Disponible">Disponible</option>
+        <option value="En servicio">En servicio</option>
+        <option value="En mantenimiento">En mantenimiento</option>
+        <option value="De baja">De baja</option>
+        <option value="Extraviado">Extraviado</option>
+        <option value="No Cumple / Inoperativo">No Cumple / Inoperativo</option>
+        <option value="Eliminado">Eliminado</option>
+      </select>
+      <select id="filtro-calibracion">
+        <option value="Todas">Cualquier calibración</option>
+        <option value="vencido">Vencidas</option>
+        <option value="por_vencer">Vencen este mes</option>
+        <option value="vigente">Vigentes</option>
+        <option value="sin_programar">Sin programar</option>
+      </select>
+      <select id="filtro-tipocal" title="Filtra por tipo de calibracion (actividad CAL)">
+        <option value="Todas">Cal. interna y externa</option>
+        <option value="CI">Cal. interna (CI)</option>
+        <option value="CE">Cal. externa (CE)</option>
+        <option value="">Cal. sin tipo definido</option>
+      </select>
+      <input type="text" id="buscar2" placeholder="Buscar código...">
+    </div>
+    <div style="margin-bottom:10px; display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+      <button id="btn-descargar-reporte-vencimientos" class="btn-mini">Descargar reporte de vencimientos (PDF)</button>
+      <span style="display:inline-flex; gap:6px; align-items:center; border:1px solid var(--border); border-radius:8px; padding:4px 8px; background:var(--surface-1);">
+        <label class="field-label" style="margin:0;">Solicitud de calibración del mes:</label>
+        <input type="month" id="solicitud-mes" style="width:auto; height:30px;">
+        <button id="btn-solicitud-calibracion" class="btn-mini btn-primario">Preparar solicitud...</button>
+      </span>
+      
+      <div class="etiquetas-acceso" aria-label="Acciones de etiquetas">
+        <div>
+          <strong>Etiquetas PDF</strong>
+          <span id="etiquetas-sel-count-compact" class="etiquetas-acceso-contador">0 seleccionados</span>
+        </div>
+        <button id="btn-abrir-modal-etiquetas" class="btn-mini" type="button">Configurar etiquetas</button>
+      </div>
+<div id="selector-formato-etiquetas" style="margin:12px 0;padding:12px;border:1px solid var(--border);border-radius:8px;background:var(--surface-1);">
+<strong>Formato de etiqueta para PDF</strong>
+<div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:8px;">
+<label><input type="radio" name="formato-etiqueta" value="5x2" checked> 5 × 2 cm</label>
+<label><input type="radio" name="formato-etiqueta" value="9x1"> 9 × 1 cm</label>
+<label><input type="radio" name="formato-etiqueta" value="14x3.5"> 14 × 3,5 cm</label>
+<label><input type="radio" name="formato-etiqueta" value="personalizado"> Medida personalizada</label>
+</div>
+
+<!-- Medidas a mano, para el papel de etiquetas que se tenga en el laboratorio -->
+<div id="etiqueta-personalizada" style="display:none;margin-top:10px;padding:12px 14px;background:var(--surface-2);border:1px dashed var(--border-strong);border-radius:10px;">
+  <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;">
+    <div style="width:130px;">
+      <label class="field-label" for="etiqueta-ancho">Ancho (cm)</label>
+      <input type="number" id="etiqueta-ancho" value="5" min="1.5" max="19" step="0.1">
+    </div>
+    <div style="width:130px;">
+      <label class="field-label" for="etiqueta-alto">Alto (cm)</label>
+      <input type="number" id="etiqueta-alto" value="2.5" min="0.6" max="27" step="0.1">
+    </div>
+    <div style="width:150px;">
+      <label class="field-label" for="etiqueta-separacion">Separación (mm)</label>
+      <input type="number" id="etiqueta-separacion" value="2" min="0" max="20" step="0.5">
+    </div>
+    <button id="btn-medir-etiquetas" class="btn-mini" type="button" title="Calcula cuántas etiquetas entran por hoja">Comprobar medidas</button>
+  </div>
+  <p id="etiqueta-medida-info" style="font-size:12px;color:var(--text-secondary);margin:10px 0 0;line-height:1.45;"></p>
+</div>
+<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);">
+  <label style="font-weight:600;"><input type="checkbox" id="etiqueta-con-barras" checked> Incluir código de barras (Code 128)</label>
+  <div style="font-size:12px;color:var(--text-secondary);margin-top:6px;">
+    El código de barras contiene el código del patrón, así que el lector lo reconoce al escanearlo
+    en la salida y en la devolución. El código también se imprime en texto, para poder teclearlo
+    si el lector falla. Para códigos largos usa el formato de 14 × 3,5 cm: las barras quedan más anchas.
+  </div>
+</div>
+<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);">
+  <label style="font-weight:600;"><input type="checkbox" id="etiqueta-agrupar-equipos" checked> Agrupar por equipos</label>
+  <div style="font-size:12px;color:var(--text-secondary);margin-top:6px;">
+    Las etiquetas salen ordenadas por tipo de equipo y cada grupo abre con una franja
+    con su nombre, para repartirlas sin ir leyéndolas una por una. Si lo desactivas, se
+    imprimen seguidas en el orden en que las seleccionaste y cabe alguna más por hoja.
+  </div>
+</div>
+<div style="font-size:12px;color:var(--text-secondary);margin-top:6px;">El PDF se genera en A4 respetando las dimensiones reales.</div>
+</div>
+<button id="btn-descargar-etiquetas-pdf" class="btn-primario btn-mini">Descargar etiquetas PDF</button>
+      <button id="btn-imprimir-etiquetas" class="btn-mini">Vista previa / imprimir</button>
+      <button id="btn-limpiar-etiquetas" class="btn-mini">Limpiar selección de etiquetas</button>
+    </div>
+    <div class="etiquetas-toolbar">
+      <span class="hint">Selecciona los patrones que quieras etiquetar. Esta selección es independiente de las salidas de servicio.</span>
+      <strong id="etiquetas-sel-count">0 seleccionados</strong>
+    </div>
+    <div id="lista-patrones2"></div>
+  </div>
+
+  <!-- PANEL: PERSONAL (tecnicos de campo y encargados de laboratorio) -->
+  <div id="panel-tecnicos" style="display:none;">
+    <div class="section-toolbar" style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:14px;">
+      <p class="title" style="margin:0;">Personal</p>
+      <button id="btn-abrir-modal-personal" class="btn-primario">+ Añadir personal</button>
+    </div>
+    <div class="modal-overlay" id="modal-personal">
+      <div class="modal-box" style="max-width:920px;">
+        <div class="card" style="margin:0;">
+      <p class="title">Añadir personal</p>
+      <div class="grid2">
+        <div>
+          <label class="field-label">Rol</label>
+          <select id="nt-rol">
+            <option value="tecnico">Técnico</option>
+            <option value="supervisor">Encargado de laboratorio</option>
+          </select>
+        </div>
+        <div>
+          <label class="field-label">Nombre completo</label>
+          <input type="text" id="nt-nombre" placeholder="Ej: Ana Torres">
+        </div>
+        <div class="nt-solo-tecnico">
+          <label class="field-label">Código de laptop</label>
+          <input type="text" id="nt-laptop" placeholder="Ej: LAP-004">
+        </div>
+        <div class="nt-solo-tecnico">
+          <label class="field-label">Código de termohigrómetro</label>
+          <input type="text" id="nt-termo" placeholder="Ej: TH-004">
+        </div>
+        <div class="nt-solo-tecnico">
+          <label class="field-label">Código de multímetro</label>
+          <input type="text" id="nt-multimetro" placeholder="Ej: MULT-004">
+        </div>
+        <div class="full nt-solo-tecnico">
+          <label class="field-label">Equipos adicionales (opcional)</label>
+          <textarea id="nt-extra" placeholder="Ej: Maletín de herramientas, extensión eléctrica 20 m, escalera plegable"></textarea>
+        </div>
+        <div class="full nt-solo-supervisor" style="display:none;">
+          <label class="field-label">Laboratorios a su cargo</label>
+          <div id="nt-laboratorios" class="labs-check"></div>
+          <div style="font-size:12px;color:var(--text-secondary);margin-top:6px;">
+            Marca todos los que lleve: un mismo encargado puede tener dos o más laboratorios.
+            Su nombre saldrá como «Encargado de Laboratorio» en las actas de salida de esos laboratorios.
+          </div>
+        </div>
+      </div>
+      <p id="nt-error" class="msg-error"></p>
+      <p id="nt-ok" class="msg-ok"></p>
+          <div class="modal-actions">
+            <button id="btn-cancelar-personal" class="btn-mini">Cancelar</button>
+            <button id="btn-agregar-tecnico" class="btn-primario btn-mini">Añadir al personal</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="lista-tecnicos"></div>
+  </div>
+
+  <!-- PANEL: CLIENTES -->
+  <div id="panel-clientes" style="display:none;">
+    <div class="section-toolbar" style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:14px;">
+      <p class="title" style="margin:0;">Clientes</p>
+      <button id="btn-abrir-modal-cliente" class="btn-primario">+ Añadir empresa</button>
+    </div>
+    <div class="modal-overlay" id="modal-cliente">
+      <div class="modal-box" style="max-width:760px;">
+        <div class="card" style="margin:0;">
+      <p class="title">Añadir empresa cliente</p>
+      <div class="grid2">
+        <div class="full">
+          <label class="field-label">Razón social / nombre</label>
+          <input type="text" id="cl-nombre" placeholder="Ej: Empresa Textil ABC S.A.">
+        </div>
+        <div>
+          <label class="field-label">RUC (opcional)</label>
+          <input type="text" id="cl-ruc" placeholder="Ej: 20123456789">
+        </div>
+        <div>
+          <label class="field-label">Nombre de la primera sede</label>
+          <input type="text" id="cl-sede-nombre" placeholder="Ej: Sede Central">
+        </div>
+        <div class="full">
+          <label class="field-label">Dirección de esa sede</label>
+          <input type="text" id="cl-sede-direccion" placeholder="Ej: Av. Los Frutales 220, Ate, Lima">
+        </div>
+        <div>
+          <label class="field-label">Contacto (opcional)</label>
+          <input type="text" id="cl-sede-contacto" placeholder="Ej: Ing. Luz Ramírez">
+        </div>
+        <div>
+          <label class="field-label">Teléfono (opcional)</label>
+          <input type="text" id="cl-sede-telefono" placeholder="Ej: 987 654 321">
+        </div>
+      </div>
+      <p id="cl-error" class="msg-error"></p>
+      <p id="cl-ok" class="msg-ok"></p>
+      <p style="font-size:12px; color:var(--text-secondary); margin:12px 0 0;">
+        Una empresa puede tener todas las sedes que necesites. Registra aquí la primera
+        y luego usa «Añadir sede» en su tarjeta para las demás.
+      </p>
+          <div class="modal-actions">
+            <button id="btn-cancelar-cliente" class="btn-mini">Cancelar</button>
+            <button id="btn-agregar-cliente" class="btn-primario btn-mini">Añadir empresa</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="filters">
+      <input type="text" id="buscar-clientes" placeholder="Buscar empresa, RUC, sede o dirección...">
+    </div>
+    <div id="lista-clientes"></div>
+    <p id="clientes-vacio" class="empty-msg" style="display:none;">
+      Aún no hay empresas registradas. Añade la primera con el formulario de arriba.
+    </p>
+  </div>
+
+  <!-- PANEL: INVENTARIO -->
+  <div id="panel-inventario" style="display:none;">
+    <div class="row-header">
+      <p>Inventario de patrones por laboratorio</p>
+      <span id="inventario-total" style="font-size:12px; color:var(--text-secondary);"></span>
+    </div>
+    <div class="filters">
+      <input type="text" id="buscar-inventario" placeholder="Buscar código, equipos o marca...">
+    </div>
+    <p id="inventario-aviso-filtro" class="edicion-aviso" style="display:none;">
+      Estás viendo el resultado de una búsqueda. Los PDF salen siempre con el inventario
+      completo de cada laboratorio, no con lo que filtra la búsqueda.
+    </p>
+    <div id="inventario-indice" style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:14px;"></div>
+    <div id="inventario-contenido"></div>
+  </div>
+
+  <!-- PANEL: CONFIGURACIÓN -->
+  <div id="panel-configuracion" style="display:none;">
+    <div class="row-header">
+      <div>
+        <p>Configuración</p>
+        <span class="configuracion-subtitulo">Administra las preferencias del documento, almacenamiento y respaldos.</span>
+      </div>
+    </div>
+    <div class="configuracion-grid">
+      <section class="configuracion-seccion">
+        <h2>Documento</h2>
+        <p>Formato del documento, identidad visual y elementos que aparecen en los PDF.</p>
+        <div class="configuracion-bloque" aria-labelledby="config-encabezado-titulo">
+          <h3 id="config-encabezado-titulo">Encabezado del documento</h3>
+          <label class="configuracion-campo" for="doc-titulo-encabezado">
+            <span>Título del documento <b aria-label="obligatorio">*</b></span>
+            <input id="doc-titulo-encabezado" type="text" maxlength="100" required>
+          </label>
+          <label class="configuracion-check">
+            <input id="doc-mostrar-logo" type="checkbox">
+            <span>Mostrar logo en el encabezado</span>
+          </label>
+          <p id="doc-encabezado-error" class="configuracion-error" role="alert" style="display:none;"></p>
+          <div class="configuracion-acciones configuracion-acciones-encabezado">
+            <button id="btn-guardar-encabezado-documento" class="btn-mini btn-primario">Guardar encabezado</button>
+          </div>
+        </div>
+        <div class="configuracion-bloque" aria-labelledby="config-cuerpo-titulo">
+          <h3 id="config-cuerpo-titulo">Datos del cuerpo</h3>
+          <p>Marca los datos que deben aparecer y ajusta el texto de cada etiqueta.</p>
+          <div id="doc-campos-salida" class="configuracion-campos-documento"></div>
+          <p id="doc-cuerpo-error" class="configuracion-error" role="alert" style="display:none;"></p>
+          <div class="configuracion-acciones configuracion-acciones-encabezado">
+            <button id="btn-guardar-cuerpo-documento" class="btn-mini btn-primario">Guardar datos del cuerpo</button>
+          </div>
+        </div>
+        <div class="configuracion-bloque" aria-labelledby="config-tabla-titulo">
+          <h3 id="config-tabla-titulo">Tabla de patrones</h3>
+          <label class="configuracion-campo" for="doc-titulo-tabla">
+            <span>Título de la sección</span>
+            <input id="doc-titulo-tabla" type="text" maxlength="100">
+          </label>
+          <label class="configuracion-check">
+            <input id="doc-mostrar-titulo-tabla" type="checkbox">
+            <span>Mostrar título de la sección</span>
+          </label>
+          <p class="configuracion-ayuda">Activa las columnas que deban aparecer; las visibles ocuparán automáticamente el ancho disponible.</p>
+          <div id="doc-columnas-salida" class="configuracion-campos-documento"></div>
+          <p id="doc-tabla-error" class="configuracion-error" role="alert" style="display:none;"></p>
+          <div class="configuracion-acciones configuracion-acciones-encabezado">
+            <button id="btn-guardar-tabla-documento" class="btn-mini btn-primario">Guardar tabla de patrones</button>
+          </div>
+        </div>
+        <div class="configuracion-acciones">
+          <button id="btn-formato-acta" class="btn-mini btn-primario" title="Edita los datos fijos del pie de los documentos PDF">Formato del documento</button>
+          <button id="btn-logo" class="btn-mini" title="Cambia la imagen que aparece en el encabezado de los documentos PDF">Logo del encabezado</button>
+        </div>
+      </section>
+      <section class="configuracion-seccion">
+        <h2>Datos y respaldo</h2>
+        <p>Carpeta de datos, importaciones, exportaciones y restauración de información.</p>
+        <p id="storage-status" class="configuracion-estado">Los datos se guardan en IndexedDB (capacidad casi ilimitada).</p>
+        <div class="configuracion-acciones">
+          <button id="btn-conectar-carpeta" class="btn-mini" style="display:none;">Conectar carpeta de datos</button>
+          <button id="btn-exportar-backup" class="btn-mini btn-primario">Exportar respaldo</button>
+          <button id="btn-importar-backup" class="btn-mini">Importar respaldo</button>
+          <button id="btn-importar-fusion" class="btn-mini" title="Actualiza el catálogo y las actividades desde un JSON de programa sin borrar técnicos ni historial">Importar programa (fusionar)</button>
+          <input type="file" id="input-importar-backup" accept=".json,application/json" style="display:none;">
+          <input type="file" id="input-importar-fusion" accept=".json,application/json" style="display:none;">
+        </div>
+      </section>
+      <section class="configuracion-seccion configuracion-seccion-acceso">
+        <h2>Acceso a Configuración</h2>
+        <p>La contraseña protege los cambios de documento, almacenamiento y respaldos en este equipo.</p>
+        <div class="configuracion-acciones">
+          <button id="btn-cambiar-clave-configuracion" class="btn-mini btn-primario">Cambiar contraseña</button>
+          <button id="btn-cerrar-sesion-configuracion" class="btn-mini">Cerrar acceso</button>
+        </div>
+      </section>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL de confirmacion peligrosa (borrado total de patron con historial) -->
+<div class="modal-overlay" id="modal-eliminar-total">
+  <div class="modal-box">
+    <h3>Eliminar patrón y su historial</h3>
+    <p>
+      <span id="modal-desc-prefijo">Vas a eliminar de forma irreversible el patrón</span>
+      <span class="modal-codigo" id="modal-codigo-nombre"></span>
+      <span id="modal-desc-sufijo">y todos los registros de historial donde aparece. Esta acción no se puede deshacer.</span>
+    </p>
+    <label class="field-label">Escribe el código del patrón para confirmar</label>
+    <input type="text" id="modal-confirm-input" placeholder="Código del patrón">
+    <p class="msg-error" id="modal-confirm-error"></p>
+    <div class="modal-actions">
+      <button class="btn-mini" id="modal-cancelar">Cancelar</button>
+      <button class="btn-peligro btn-mini" id="modal-confirmar" disabled>Eliminar definitivamente</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL generico de confirmacion (sustituye al confirm() nativo) -->
+<div class="modal-overlay" id="modal-confirmar-accion">
+  <div class="modal-box">
+    <h3 id="confirmar-titulo" style="color:var(--text-primary);">Confirmar acción</h3>
+    <p id="confirmar-mensaje" style="white-space:pre-line;"></p>
+    <div class="modal-actions" style="flex-wrap:wrap;">
+      <button class="btn-mini" id="confirmar-cancelar">Cancelar</button>
+      <button class="btn-mini" id="confirmar-alterno" style="display:none;"></button>
+      <button class="btn-primario btn-mini" id="confirmar-ok">Confirmar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: logo del encabezado del PDF -->
+<div class="modal-overlay" id="modal-logo">
+  <div class="modal-box" style="max-width:560px;">
+    <h3 style="color:var(--text-primary);">Logo del encabezado</h3>
+    <p>
+      Es la imagen que sale arriba en el PDF «Lista de equipos para servicio a campo».
+      Se guarda dentro de la app y viaja en los respaldos, así que no hace falta
+      volver a cargarla en otro equipo si restauras el respaldo.
+    </p>
+    <div style="background:#fff;border:1px dashed var(--border-strong);border-radius:10px;padding:14px;text-align:center;margin:10px 0;">
+      <img id="logo-preview" alt="Logo del encabezado" style="max-width:100%;max-height:110px;">
+    </div>
+    <p id="logo-info" style="font-size:12px;color:var(--text-secondary);margin-bottom:4px;"></p>
+    <p style="font-size:12px;color:var(--text-secondary);">
+      PNG, JPG o WEBP. Si la imagen es grande se reduce sola a 900 px de ancho;
+      el PNG conserva el fondo transparente.
+    </p>
+    <input type="file" id="input-logo" accept="image/png,image/jpeg,image/webp" style="display:none;">
+    <div class="modal-actions" style="flex-wrap:wrap;">
+      <button class="btn-mini" id="logo-restaurar">Restaurar el original</button>
+      <button class="btn-mini" id="logo-cerrar">Cerrar</button>
+      <button class="btn-primario btn-mini" id="logo-elegir">Elegir imagen…</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL de devolución por escáner -->
+<!-- Configuracion del pie fijo del acta PDF -->
+<div class="modal-overlay" id="modal-formato-acta">
+  <div class="modal-box" style="max-width:500px;">
+    <h3 style="color:var(--text-primary);">Formato del documento</h3>
+    <p>Estos datos aparecen en el pie de cada documento PDF. El nÃºmero de pÃ¡gina se genera automÃ¡ticamente.</p>
+    <div class="form-grid">
+      <div><label class="field-label" for="formato-acta-codigo">CÃ³digo del formato</label><input id="formato-acta-codigo" type="text" maxlength="40"></div>
+      <div><label class="field-label" for="formato-acta-version">VersiÃ³n</label><input id="formato-acta-version" type="text" maxlength="20"></div>
+      <div class="full"><label class="field-label" for="formato-acta-aprobado">Fecha de aprobaciÃ³n</label><input id="formato-acta-aprobado" type="date"></div>
+    </div>
+    <p id="formato-acta-error" class="msg-error"></p>
+    <div class="modal-actions"><button class="btn-mini" id="formato-acta-cancelar">Cancelar</button><button class="btn-primario btn-mini" id="formato-acta-guardar">Guardar formato</button></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-devolucion">
+  <div class="modal-box" style="max-width:700px; max-height:92vh; display:flex; flex-direction:column;">
+    <h3 style="color:var(--text-primary);">Devolución de patrones</h3>
+    <p style="margin-bottom:12px;">
+      Escanea los patrones que vuelven al laboratorio. Se van acumulando abajo;
+      nada se registra hasta que confirmes.
+    </p>
+
+    <div class="caja-escaneo" style="margin-bottom:12px;">
+      <div class="escaneo-fila">
+        <div style="flex:1; min-width:200px;">
+          <label class="field-label" for="escaneo-devolucion">Escanear o escribir el código</label>
+          <input type="text" id="escaneo-devolucion" class="campo-escaneo"
+                 placeholder="Dispara el lector, o escribe el código y pulsa Enter"
+                 autocomplete="off" spellcheck="false">
+        </div>
+        <label class="escaneo-sonido">
+          <input type="checkbox" id="escaneo-sonido-devolucion" checked> Sonido
+        </label>
+      </div>
+      <p id="escaneo-devolucion-eco" class="escaneo-eco"></p>
+    </div>
+
+    <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; margin-bottom:4px;">
+      <span class="dev-contador"><b id="dev-count">0</b> patrón(es) por devolver</span>
+      <button class="btn-mini" id="dev-vaciar">Vaciar lista</button>
+    </div>
+    <div id="dev-lista" style="flex:1;"></div>
+
+    <div class="modal-actions" style="align-items:center;">
+      <span style="flex:1; font-size:12px; color:var(--text-secondary);">
+        Los patrones vuelven a quedar disponibles y su salida se cierra con la fecha y hora de ahora.
+      </span>
+      <button class="btn-mini" id="dev-cerrar">Cerrar</button>
+      <button class="btn-primario btn-mini" id="dev-confirmar">Confirmar devolución</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL de edicion de una OT ya registrada -->
+<div class="modal-overlay" id="modal-editar-ot">
+  <div class="modal-box" style="max-width:720px; max-height:92vh; display:flex; flex-direction:column;">
+    <h3 style="color:var(--text-primary);">Corregir OT <span id="edit-ot-titulo"></span></h3>
+    <div style="overflow-y:auto; flex:1; padding-right:4px;">
+      <div class="edicion-aviso">
+        Corrige aquí lo que se registró mal. El registro original no se borra: cada cambio queda
+        anotado con su fecha, quién lo hizo y el motivo, y aparece en el historial y en el acta.
+      </div>
+
+      <div class="edit-seccion">
+        <p class="edit-titulo">Datos de la orden</p>
+        <div class="grid2">
+          <div>
+            <label class="field-label">Número de OT</label>
+            <input type="text" id="edit-ot-numero">
+          </div>
+          <div>
+            <label class="field-label">Fecha y hora de salida</label>
+            <div style="display:flex; gap:6px; align-items:center;">
+              <input type="date" id="edit-ot-fecha" style="flex:1.3; min-width:0;">
+              <input type="time" id="edit-ot-hora" step="1" style="flex:1; min-width:0;">
+            </div>
+          </div>
+          <div>
+            <label class="field-label">Empresa (cliente)</label>
+            <select id="edit-ot-cliente"></select>
+          </div>
+          <div>
+            <label class="field-label">Sede / dirección</label>
+            <select id="edit-ot-sede"></select>
+          </div>
+          <div class="full">
+            <label class="field-label">Técnico asignado</label>
+            <select id="edit-ot-tecnico"></select>
+          </div>
+        </div>
+        <p id="edit-ot-tecnico-info" style="font-size:12px; color:var(--text-secondary); margin:8px 0 0;"></p>
+      </div>
+
+      <div class="edit-seccion">
+        <p class="edit-titulo">Patrones de la OT (<span id="edit-ot-conteo">0</span>)</p>
+        <div id="edit-ot-patrones"></div>
+      </div>
+
+      <div class="edit-seccion">
+        <p class="edit-titulo">Añadir un patrón que faltaba</p>
+        <input type="text" id="edit-ot-buscar" placeholder="Busca por código, equipos o marca...">
+        <div id="edit-ot-agregar-resultados"></div>
+      </div>
+
+      <div class="edit-seccion">
+        <p class="edit-titulo">Motivo de la corrección</p>
+        <textarea id="edit-ot-motivo" placeholder="Ej: Se registró el técnico equivocado; el servicio lo hizo Ana Torres." style="min-height:70px;"></textarea>
+        <label class="field-label" style="margin-top:8px;">Corregido por (opcional)</label>
+        <input type="text" id="edit-ot-autor" placeholder="Ej: Mauricio Alonzo">
+      </div>
+
+      <p class="msg-error" id="edit-ot-error"></p>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-mini" id="edit-ot-cancelar">Cancelar</button>
+      <button class="btn-primario btn-mini" id="edit-ot-guardar">Guardar correcciones</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL de observaciones del historial -->
+<div class="modal-overlay" id="modal-observacion">
+  <div class="modal-box" style="max-width:560px;">
+    <h3 style="color:var(--text-primary);" id="obs-titulo">Añadir observación</h3>
+    <p id="obs-contexto" style="margin-bottom:12px;"></p>
+    <label class="field-label" id="obs-label-texto">Observación</label>
+    <textarea id="obs-texto" placeholder="Ej: Se marcó devuelto por error, el patrón sigue en la sede del cliente." style="min-height:90px;"></textarea>
+    <label class="field-label">Registrado por (opcional)</label>
+    <input type="text" id="obs-autor" placeholder="Ej: Mauricio Alonzo">
+    <p style="font-size:12px; color:var(--text-secondary); margin-top:10px;" id="obs-ayuda">
+      Las observaciones no borran ni modifican lo ya registrado: se añaden con su fecha y hora,
+      como exige la trazabilidad ISO 17025.
+    </p>
+    <p class="msg-error" id="obs-error"></p>
+    <div class="modal-actions">
+      <button class="btn-mini" id="obs-cancelar">Cancelar</button>
+      <button class="btn-primario btn-mini" id="obs-guardar">Guardar observación</button>
+    </div>
+  </div>
+</div>
+
+<!-- Avisos no bloqueantes -->
+<div id="toasts"></div>
+
+<!-- Acceso local a la configuración. No requiere servidor ni librerías externas. -->
+<div class="modal-overlay" id="modal-acceso-configuracion" aria-labelledby="acceso-configuracion-titulo" aria-modal="true" role="dialog">
+  <div class="modal-box modal-acceso-configuracion">
+    <h3 id="acceso-configuracion-titulo">Acceso a Configuración</h3>
+    <p>Ingresa tus credenciales para modificar la configuración del sistema.</p>
+    <div class="form-grid">
+      <div><label class="field-label" for="acceso-configuracion-usuario">Usuario</label><input id="acceso-configuracion-usuario" type="text" autocomplete="username" value="admin"></div>
+      <div><label class="field-label" for="acceso-configuracion-clave">Contraseña</label><input id="acceso-configuracion-clave" type="password" autocomplete="current-password"></div>
+    </div>
+    <p id="acceso-configuracion-error" class="msg-error" role="alert" style="display:none;"></p>
+    <div class="modal-actions">
+      <button id="acceso-configuracion-cancelar" class="btn-mini">Cancelar</button>
+      <button id="acceso-configuracion-ingresar" class="btn-mini btn-primario">Ingresar</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-cambiar-clave-configuracion" aria-labelledby="cambiar-clave-configuracion-titulo" aria-modal="true" role="dialog">
+  <div class="modal-box modal-acceso-configuracion">
+    <h3 id="cambiar-clave-configuracion-titulo">Cambiar contraseña</h3>
+    <p>Usuario: <b>admin</b></p>
+    <div class="form-grid">
+      <div><label class="field-label" for="cambiar-clave-actual">Contraseña actual</label><input id="cambiar-clave-actual" type="password" autocomplete="current-password"></div>
+      <div><label class="field-label" for="cambiar-clave-nueva">Nueva contraseña</label><input id="cambiar-clave-nueva" type="password" autocomplete="new-password"></div>
+      <div><label class="field-label" for="cambiar-clave-confirmacion">Repite la nueva contraseña</label><input id="cambiar-clave-confirmacion" type="password" autocomplete="new-password"></div>
+    </div>
+    <p id="cambiar-clave-error" class="msg-error" role="alert" style="display:none;"></p>
+    <div class="modal-actions">
+      <button id="cambiar-clave-cancelar" class="btn-mini">Cancelar</button>
+      <button id="cambiar-clave-guardar" class="btn-mini btn-primario">Guardar contraseña</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: ficha / hoja de vida del patron -->
+<div class="modal-overlay" id="modal-ficha">
+  <div class="modal-box" style="max-width:760px; max-height:90vh; display:flex; flex-direction:column;">
+    <h3 style="color:var(--text-primary);">Ficha del patrón <span id="ficha-codigo"></span></h3>
+    <div id="ficha-contenido" style="overflow-y:auto; flex:1;"></div>
+    <div class="modal-actions">
+      <button class="btn-mini" id="ficha-pdf">Descargar ficha (PDF)</button>
+      <button class="btn-primario btn-mini" id="ficha-cerrar">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL de seleccion para la solicitud de calibracion -->
+<div class="modal-overlay" id="modal-solicitud">
+  <div class="modal-box" style="max-width:680px; max-height:88vh; display:flex; flex-direction:column;">
+    <h3 style="color:var(--text-primary);">Solicitud de calibración - <span id="sol-mes-titulo"></span></h3>
+    <p style="margin-bottom:8px;">
+      Marca lo que entra en la solicitud. Por defecto vienen marcados la
+      <b>calibración interna (CI)</b> y el <b>mantenimiento</b> que vencen ese mes;
+      la calibración externa (CE) y la comprobación intermedia quedan sin marcar pero disponibles.
+    </p>
+    <div class="filters" style="margin-bottom:8px;">
+      <input type="text" id="sol-buscar" placeholder="Añadir otro patrón: busca por código o equipos...">
+    </div>
+    <div id="sol-resultados-busqueda" style="margin-bottom:8px;"></div>
+    <div id="sol-listas" style="overflow-y:auto; flex:1; border:1px solid var(--border); border-radius:var(--radius); min-height:120px;"></div>
+    <div class="modal-actions" style="align-items:center;">
+      <span style="flex:1; font-size:13px; color:var(--text-secondary);" id="sol-contador">0 seleccionados</span>
+      <button class="btn-mini" id="sol-cancelar">Cancelar</button>
+      <button class="btn-primario btn-mini" id="sol-generar">Generar PDF</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: punto de entrada compacto de etiquetas; la configuracion se integra en la fase 2. -->
+<div class="modal-overlay" id="modal-etiquetas" aria-labelledby="modal-etiquetas-titulo" aria-modal="true" role="dialog">
+  <div class="modal-box etiquetas-modal" style="max-width:720px; max-height:88vh; display:flex; flex-direction:column;">
+    <h3 id="modal-etiquetas-titulo" style="color:var(--text-primary);">Etiquetas de patrones</h3>
+    <p>Selecciona los patrones desde el catÃ¡logo y configura aquÃ­ la salida de sus etiquetas.</p>
+    <div class="etiquetas-modal-resumen">
+      <span>SelecciÃ³n actual</span>
+      <strong id="etiquetas-sel-count-modal">0 seleccionados</strong>
+    </div>
+    <p id="etiquetas-modal-estado" class="etiquetas-modal-estado" aria-live="polite"></p>
+    <p class="hint" style="margin-top:14px;">La configuraciÃ³n actual de formato, vista previa y descarga se integrarÃ¡ en este panel en la siguiente fase.</p>
+    <div id="etiquetas-configuracion-modal" class="etiquetas-configuracion-modal"></div>
+    <div class="modal-actions">
+      <button class="btn-mini" id="btn-cerrar-modal-etiquetas" type="button">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: alta de patrón. Conserva el formulario original durante la fase 1. -->
+<div class="modal-overlay" id="modal-alta-patron" aria-labelledby="modal-alta-patron-titulo" aria-modal="true" role="dialog">
+  <div class="modal-box modal-alta-patron">
+    <div class="modal-alta-patron-cabecera">
+      <div>
+        <h3 id="modal-alta-patron-titulo">Añadir patrón nuevo</h3>
+        <p>Registra un equipo y, si corresponde, su programa de actividades.</p>
+      </div>
+      <button id="btn-cerrar-modal-alta-patron" class="btn-mini" type="button" aria-label="Cerrar">Cerrar</button>
+    </div>
+    <div id="alta-patron-contenido" class="modal-alta-patron-contenido"></div>
+  </div>
+</div>
+
+<!-- MODAL de registro de calibracion -->
+<div class="modal-overlay" id="modal-calibracion">
+  <div class="modal-box">
+    <h3 style="color:var(--text-primary);">Registrar actividad</h3>
+    <p>
+      Patron <span class="modal-codigo" id="modal-cal-codigo" style="color:var(--text-primary);"></span>.
+      Indica qué actividad se realizó y en qué fecha; la app calculará sola el próximo mes de
+      vencimiento según la frecuencia configurada.
+    </p>
+    <label class="field-label">Actividad</label>
+    <select id="modal-cal-actividad">
+      <option value="CAL">Calibración</option>
+      <option value="V">Comprobación Intermedia</option>
+      <option value="M">Mantenimiento</option>
+    </select>
+    <label class="field-label">Tipo (interna / externa)</label>
+    <select id="modal-cal-tipo"></select>
+    <label class="field-label">Fecha de ejecución</label>
+    <input type="date" id="modal-cal-fecha">
+    <label class="field-label">Frecuencia (meses)</label>
+    <input type="number" id="modal-cal-intervalo" min="1" step="1">
+    <label class="field-label">N.° de documento / informe (opcional)</label>
+    <input type="text" id="modal-cal-documento" placeholder="Ej: IV26-0142">
+    <p style="font-size:13px; color:var(--text-secondary); margin-top:10px;">
+      Próximo vencimiento: <b id="modal-cal-preview">-</b>
+    </p>
+    <p class="msg-error" id="modal-cal-error"></p>
+    <div class="modal-actions">
+      <button class="btn-mini" id="modal-cal-cancelar">Cancelar</button>
+      <button class="btn-primario btn-mini" id="modal-cal-confirmar">Registrar y liberar patrón</button>
+    </div>
+  </div>
+</div>
+
+<script src="js/core/namespace.js"></script>
+<script src="js/domain/activity.js"></script>
+<script src="js/domain/date.js"></script>
+<script src="js/domain/inventory.js"></script>
+<script src="js/domain/catalog-program.js"></script>
+<script src="js/domain/personnel.js"></script>
+<script src="js/domain/history.js"></script>
+<script src="js/domain/history-ordering.js"></script>
+<script src="js/domain/pagination.js"></script>
+<script src="js/domain/service-indicators.js"></script>
+<script src="js/domain/order-edit.js"></script>
+<script src="js/domain/barcode-code128.js"></script>
+<script src="js/ui/catalog-program-controller.js"></script>
+<script src="js/ui/history-controller.js"></script>
+<script src="js/ui/dispatch-return-controller.js"></script>
+<script src="js/ui/dispatch-layout.js"></script>
+<script src="js/ui/admin-controller.js"></script>
+<script src="js/ui/assets-controller.js"></script>
+<script src="js/ui/labels-modal.js"></script>
+<script src="js/ui/pattern-create-modal.js"></script>
+<script src="js/ui/logo-controller.js"></script>
+<script src="js/ui/document-settings.js"></script>
+<script src="js/ui/settings-auth.js"></script>
+<script src="js/ui/scanner-controller.js"></script>
+<script src="js/ui/scanner-utilities.js"></script>
+<script src="js/ui/scanner-global-handler.js"></script>
+<script src="js/reports/program-report.js"></script>
+<script src="js/reports/expiration-report.js"></script>
+<script src="js/reports/inventory-report.js"></script>
+<script src="js/reports/calibration-request-report.js"></script>
+<script src="js/reports/pattern-sheet-report.js"></script>
+<script src="js/reports/label-report.js"></script>
+<script src="js/reports/label-pdf-renderer.js"></script>
+<script src="js/reports/label-print.js"></script>
+    <script src="js/reports/dispatch-certificate-report.js"></script>
+<script src="js/ui/dashboard-renderer.js"></script>
+<script src="js/ui/indicators-dashboard.js"></script>
+<script src="js/ui/clients-renderer.js"></script>
+<script src="js/ui/clients-controller.js"></script>
+<script src="js/ui/personnel-renderer.js"></script>
+<script src="js/ui/personnel-controller.js"></script>
+<script src="js/ui/catalog-renderer.js"></script>
+<script src="js/ui/program-renderer.js"></script>
+<script src="js/ui/history-renderer.js"></script>
+<script src="js/ui/pattern-form-renderer.js"></script>
+<script src="js/ui/pattern-detail-renderer.js"></script>
+<script src="js/ui/dispatch-summary-renderer.js"></script>
+<script src="js/ui/dispatch-pattern-list-renderer.js"></script>
+<script src="js/ui/return-list-renderer.js"></script>
+<script src="js/ui/order-editor-renderer.js"></script>
+<script src="js/ui/order-editor-modal.js"></script>
+<script src="js/ui/observation-modal.js"></script>
+<script src="js/ui/calibration-modal.js"></script>
+<script src="js/ui/feedback.js"></script>
+<script src="js/ui/app-render-coordinator.js"></script>
+<script src="js/ui/app-startup.js"></script>
+<script src="js/ui/inventario.js"></script>
+<script src="js/data/indexeddb.js"></script>
+<script src="js/data/mirror.js"></script>
+<script src="js/data/initial-catalog-part-1.js"></script>
+<script src="js/data/initial-catalog-part-2.js"></script>
+<script src="js/data/initial-catalog.js"></script>
+<script src="js/data/bootstrap.js"></script>
+<script src="js/usecases/pattern-actions.js"></script>
+<script src="js/usecases/dispatch-actions.js"></script>
+<script src="js/usecases/dispatch-scan-actions.js"></script>
+<script src="js/usecases/return-actions.js"></script>
+<script src="js/usecases/return-scan-actions.js"></script>
+<script src="js/usecases/initial-weight-groups.js"></script>
+<script src="js/usecases/client-actions.js"></script>
+<script src="js/usecases/personnel-actions.js"></script>
+<script src="js/usecases/order-actions.js"></script>
+<script src="js/usecases/destructive-actions.js"></script>
+<script src="js/usecases/backup-actions.js"></script>
+<script src="js/usecases/logo-actions.js"></script>
+<script src="js/legacy/app-reference.js"></script>
+</body>
+</html>
